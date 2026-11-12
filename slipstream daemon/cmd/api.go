@@ -36,6 +36,17 @@ func (app *api) Mount() http.Handler {
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("The API is functioning properly"))
 	})
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Welcome to your aerocrest daemon! Please set it up on the panel using the token and the server's public ip address"))
+	})
+
+	r.Route("/api", func(r chi.Router) {
+		r.Route("/Servers", func(r chi.Router) {
+			r.Get("/Servers", func(writer http.ResponseWriter, request *http.Request) {
+				writer.Write([]byte("Servers List"))
+			})
+		})
+	})
 	return r
 }
 
