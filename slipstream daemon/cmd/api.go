@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/oauth"
 )
 
 type api struct {
@@ -14,14 +15,10 @@ type api struct {
 }
 
 type config struct {
+	secret   string
 	addr     string
-	db       dbConfig
 	wTimeout time.Duration
 	rTimeout time.Duration
-}
-
-type dbConfig struct {
-	dsn string
 }
 
 func (app *api) Mount() http.Handler {
@@ -41,8 +38,9 @@ func (app *api) Mount() http.Handler {
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Route("/Servers", func(r chi.Router) {
-			r.Get("/Servers", func(writer http.ResponseWriter, request *http.Request) {
+		r.Use(oauth.Authorize("key", nil))
+		r.Route("/servers", func(r chi.Router) {
+			r.Get("/servers", func(writer http.ResponseWriter, request *http.Request) {
 				writer.Write([]byte("Servers List"))
 			})
 		})
