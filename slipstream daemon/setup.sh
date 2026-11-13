@@ -25,5 +25,6 @@ sudo systemctl enable --now docker
 if [ -n "$SUDO_USER" ]; then
   sudo chown root:"$SUDO_USER" "$CONFIG_FILE"
 fi
-sudo chmod 640 "$CONFIG_FILE"
+sudo chmod 770 "$CONFIG_FILE"
+sudo chmod 660 "$CONFIG_FILE"
 

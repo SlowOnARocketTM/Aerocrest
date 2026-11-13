@@ -1,13 +1,16 @@
 package main
 
 import (
+	"crypto/subtle"
+	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/oauth"
 )
 
 type api struct {
@@ -19,6 +22,25 @@ type config struct {
 	addr     string
 	wTimeout time.Duration
 	rTimeout time.Duration
+}
+
+func BearerKeyAuth(secretKey string) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			token, found := strings.CutPrefix(authHeader, "Bearer ")
+			if !found || token == "" {
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+			if subtle.ConstantTimeCompare([]byte(token), []byte(secretKey)) != 1 {
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (app *api) Mount() http.Handler {
@@ -38,10 +60,22 @@ func (app *api) Mount() http.Handler {
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Use(oauth.Authorize("key", nil))
+		r.Use(BearerKeyAuth(app.config.secret))
 		r.Route("/servers", func(r chi.Router) {
-			r.Get("/servers", func(writer http.ResponseWriter, request *http.Request) {
-				writer.Write([]byte("Servers List"))
+			r.Get("/", func(writer http.ResponseWriter, request *http.Request) {
+				dockerCli, dErr := docker.NewClientFromEnv()
+				if dErr != nil {
+					log.Printf("Failed to create docker client, err: %s", dErr)
+				}
+				containers, dErr := dockerCli.ListContainers(docker.ListContainersOptions{All: true})
+				if dErr != nil {
+					log.Printf("Failed to list docker containers, err: %s", dErr)
+				}
+				marshal, dErr := json.MarshalIndent(containers, "", "  ")
+				if dErr != nil {
+					log.Printf("Failed to marshall the docker containers list, err: %s", dErr)
+				}
+				writer.Write(marshal)
 			})
 		})
 	})

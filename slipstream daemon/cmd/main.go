@@ -35,13 +35,14 @@ func main() {
 			logger.Error("could not generate a secret key", "error", kErr)
 		}
 		cfgFile.Section("").Key("secret").SetValue(secureKey)
+		cfgFile.Section("").Key("isFirstRun").SetValue("false")
 		cerr := cfgFile.SaveTo(filepath.Join(appDir, "slipstream.cfg"))
 		if cerr != nil {
 			logger.Error("could not save secret key", "error", cerr)
 		}
 	}
 
-	logger.Info("Current Secret Key: %s", "secret", cfgFile.Section("").Key("secret").String())
+	logger.Info("Current Secret Key", "key", cfgFile.Section("").Key("secret").String())
 	cfg := config{
 		secret:   cfgFile.Section("").Key("secret").String(),
 		addr:     ":" + port,
