@@ -3,11 +3,13 @@ package main
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/chyeh/pubip"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -56,7 +58,9 @@ func (app *api) Mount() http.Handler {
 		w.Write([]byte("The API is functioning properly"))
 	})
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Welcome to your aerocrest daemon! Please set it up on the panel using the token and the server's public ip address"))
+		publicIP, _ := pubip.Get()
+		welcomeMsg := fmt.Sprintf("Welcome to your aerocrest daemon! Please set it up on the panel using the following information: \n Token: %s \n Public IP: %s \n Port: %s", app.config.secret, publicIP, strings.TrimPrefix(app.config.addr, ":"))
+		w.Write([]byte(welcomeMsg))
 	})
 
 	r.Route("/api", func(r chi.Router) {

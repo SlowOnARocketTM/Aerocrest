@@ -13,6 +13,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/caarlos0/env/v11 v11.3.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
+	github.com/chyeh/pubip v0.0.0-20170203095919-b7e679cf541c // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -35,6 +36,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/jpillora/backoff v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.3.3 // indirect
