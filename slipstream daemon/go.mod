@@ -6,6 +6,7 @@ require (
 	github.com/chyeh/pubip v0.0.0-20170203095919-b7e679cf541c
 	github.com/fsouza/go-dockerclient v1.13.3
 	github.com/go-chi/chi/v5 v5.5.0
+	github.com/gorilla/websocket v1.5.3
 	gopkg.in/ini.v1 v1.68.0
 )
 

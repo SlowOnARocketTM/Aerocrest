@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -17,6 +20,7 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/websocket"
 )
 
 type api struct {
@@ -242,23 +246,110 @@ func (app *api) Mount() http.Handler {
 					containerId := chi.URLParam(request, "uuid")
 					cmd := append([]string{"rcon-cli"}, command)
 					exec, err := dockerCli.CreateExec(docker.CreateExecOptions{
-						Container: containerId,
-						Cmd:       cmd,
+						Cmd:          cmd,
+						Container:    containerId,
+						AttachStdout: true,
+						AttachStderr: true,
 					})
 					if err != nil {
 						http.Error(writer, err.Error(), http.StatusInternalServerError)
 						return
 					}
-					err = dockerCli.StartExec(exec.ID, docker.StartExecOptions{})
+					var stdout, stderr bytes.Buffer
+					err = dockerCli.StartExec(exec.ID, docker.StartExecOptions{
+						OutputStream: &stdout,
+						ErrorStream:  &stderr,
+					})
+					if err != nil {
+						http.Error(writer, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					writer.Header().Set("Content-Type", "application/json")
+					err = json.NewEncoder(writer).Encode(map[string]string{
+						"stdout": stdout.String(),
+						"stderr": stderr.String(),
+					})
 					if err != nil {
 						http.Error(writer, err.Error(), http.StatusInternalServerError)
 						return
 					}
 				})
+				r.Get("/ws", handleWs(dockerCli))
 			})
 		})
 	})
 	return r
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+func handleWs(dockerCli *docker.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		containerId := chi.URLParam(r, "uuid")
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+			return
+		}
+		defer conn.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			for {
+				_, _, err := conn.ReadMessage()
+				if err != nil {
+					conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+					cancel()
+					return
+				}
+			}
+		}()
+
+		pR, pW := io.Pipe()
+		go func() {
+			defer pW.Close()
+			err := dockerCli.Logs(docker.LogsOptions{
+				Context:      ctx,
+				Container:    containerId,
+				OutputStream: pW,
+				ErrorStream:  pW,
+				Tail:         "100",
+				Follow:       true,
+				Stdout:       true,
+				Stderr:       true,
+				RawTerminal:  true,
+			})
+			if err != nil {
+				conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+				return
+			}
+		}()
+
+		buf := make([]byte, 4096)
+		for {
+			n, err := pR.Read(buf)
+			if n > 0 {
+				err := conn.WriteMessage(websocket.TextMessage, buf[:n])
+				if err != nil {
+					conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+					return
+				}
+			}
+			if err != nil {
+				conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+				return
+			}
+		}
+	}
+
 }
 
 func (app *api) Run(h http.Handler) error {
