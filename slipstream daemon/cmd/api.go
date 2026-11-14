@@ -237,6 +237,24 @@ func (app *api) Mount() http.Handler {
 					}
 					writer.Write([]byte("successfully delete server id: " + containerId))
 				})
+				r.Post("/command", func(writer http.ResponseWriter, request *http.Request) {
+					command := request.URL.Query().Get("command")
+					containerId := chi.URLParam(request, "uuid")
+					cmd := append([]string{"rcon-cli"}, command)
+					exec, err := dockerCli.CreateExec(docker.CreateExecOptions{
+						Container: containerId,
+						Cmd:       cmd,
+					})
+					if err != nil {
+						http.Error(writer, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					err = dockerCli.StartExec(exec.ID, docker.StartExecOptions{})
+					if err != nil {
+						http.Error(writer, err.Error(), http.StatusInternalServerError)
+						return
+					}
+				})
 			})
 		})
 	})
