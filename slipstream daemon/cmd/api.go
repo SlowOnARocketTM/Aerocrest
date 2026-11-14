@@ -7,6 +7,8 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -54,7 +56,7 @@ func (app *api) Mount() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Timeout(90 * time.Second))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("The API is functioning properly"))
@@ -114,6 +116,8 @@ func (app *api) Mount() http.Handler {
 						Image:        image,
 						Env:          []string{"EULA=TRUE", "VERSION=" + mcVer, fmt.Sprintf("MEMORY=%dM", mem-256)},
 						ExposedPorts: map[docker.Port]struct{}{"25565/tcp": {}},
+						Tty:          true,
+						OpenStdin:    true,
 					},
 					HostConfig: &docker.HostConfig{
 						Memory:    int64(mem) * 1024 * 1024,
@@ -135,10 +139,104 @@ func (app *api) Mount() http.Handler {
 				}
 				info, err := dockerCli.InspectContainerWithOptions(docker.InspectContainerOptions{ID: container.ID})
 				if err != nil {
+					http.Error(writer, err.Error(), http.StatusInternalServerError)
 					return
 				}
-				infoMsg := fmt.Sprintf("Docker container has been created and is running \n ID: %s \n PORT: %s", container.ID, info.NetworkSettings.Ports["25565/tcp"][0].HostPort)
-				writer.Write([]byte(infoMsg))
+				InfoMsg := fmt.Sprintf("Docker container has been created and is running \n ID: %s \n PORT: %s", container.ID, info.NetworkSettings.Ports["25565/tcp"][0].HostPort)
+				appDir := filepath.Join("/etc/slipstream/")
+				byteData, err := json.MarshalIndent(info.HostConfig, "", "  ")
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				err = os.WriteFile(filepath.Join(appDir, info.ID+".json"), byteData, 0600)
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				writer.Write([]byte(InfoMsg))
+			})
+			r.Route("/{uuid}", func(r chi.Router) {
+				r.Route("/power", func(r chi.Router) {
+					r.Get("/", func(writer http.ResponseWriter, request *http.Request) {
+						instruction := request.URL.Query().Get("instruction")
+						containerId := chi.URLParam(request, "uuid")
+						switch instruction {
+						case "stop":
+							err := dockerCli.StopContainer(containerId, 60)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							writer.Write([]byte("successfully stopped the server"))
+						case "restart":
+							err := dockerCli.StopContainer(containerId, 60)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							appDir := filepath.Join("/etc/slipstream/", containerId+".json")
+							file, err := os.Open(appDir)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							var hostCfg docker.HostConfig
+							err = json.NewDecoder(file).Decode(&hostCfg)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							err = dockerCli.StartContainer(containerId, &hostCfg)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							writer.Write([]byte("successfully restarted the server"))
+						case "start":
+							appDir := filepath.Join("/etc/slipstream/", containerId+".json")
+							file, err := os.Open(appDir)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							var hostCfg docker.HostConfig
+							err = json.NewDecoder(file).Decode(&hostCfg)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							err = dockerCli.StartContainer(containerId, &hostCfg)
+							if err != nil {
+								http.Error(writer, err.Error(), http.StatusInternalServerError)
+								return
+							}
+							writer.Write([]byte("successfully started the server"))
+
+							// add kill too
+						}
+
+					})
+				})
+				r.Delete("/", func(writer http.ResponseWriter, request *http.Request) {
+					containerId := chi.URLParam(request, "uuid")
+					err := dockerCli.RemoveContainer(docker.RemoveContainerOptions{
+						ID:            containerId,
+						RemoveVolumes: true,
+					})
+					if err != nil {
+						http.Error(writer, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					appDir := filepath.Join("/etc/slipstream/", containerId+".json")
+					err = os.Remove(appDir)
+					if err != nil {
+						http.Error(writer, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					writer.Write([]byte("successfully delete server id: " + containerId))
+				})
 			})
 		})
 	})

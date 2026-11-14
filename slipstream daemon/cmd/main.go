@@ -46,8 +46,8 @@ func main() {
 	cfg := config{
 		secret:   cfgFile.Section("").Key("secret").String(),
 		addr:     ":" + port,
-		wTimeout: 30 * time.Second,
-		rTimeout: 15 * time.Second,
+		wTimeout: 120 * time.Second,
+		rTimeout: 60 * time.Second,
 	}
 
 	app := api{config: cfg}
